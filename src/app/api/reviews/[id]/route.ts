@@ -37,7 +37,7 @@ export async function GET(
     }
 
     const audit = await AuditService.getStoredAuditById(review.audit_id);
-    const call = CallService.getRawCall(review.call_id);
+    const call = (await CallService.getCallRecord(review.call_id)) || CallService.getRawCall(review.call_id);
     const transcriptData = await TranscriptionService.getCallTranscript(review.call_id);
 
     let signedAudioUrl: string | null = null;

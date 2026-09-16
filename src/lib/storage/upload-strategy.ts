@@ -49,7 +49,8 @@ export class StandardSupabaseUploadStrategy implements AudioUploadStrategy {
   ): Promise<UploadResult> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open("PUT", destination.uploadUrl, true);
+      const method = destination.uploadUrl.includes("/storage/v1/object/") ? "POST" : "PUT";
+      xhr.open(method, destination.uploadUrl, true);
 
       // Set headers from upload authorization
       if (destination.uploadHeaders) {
@@ -88,10 +89,19 @@ export class StandardSupabaseUploadStrategy implements AudioUploadStrategy {
           let errorDetail = "";
           try {
             const parsed = JSON.parse(xhr.responseText);
-            errorDetail = parsed.error || parsed.message || xhr.statusText;
+            errorDetail = parsed.error || parsed.message || parsed.msg || xhr.statusText;
           } catch {
             errorDetail = xhr.statusText || `HTTP ${xhr.status}`;
           }
+
+          if (xhr.status === 413) {
+            if (destination.uploadUrl.startsWith("/api/")) {
+              errorDetail = `File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds Vercel Serverless Function limit (4.5 MB). Supabase Storage is not configured. Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your Vercel Project Settings.`;
+            } else {
+              errorDetail = `File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds storage bucket limit. In Supabase Dashboard, set bucket '${destination.bucket || "call-recordings"}' Max file size to 50MB.`;
+            }
+          }
+
           if (onProgress) {
             onProgress({
               percentage: 0,
@@ -144,6 +154,23 @@ export class ResumableSupabaseUploadStrategy implements AudioUploadStrategy {
           : null);
 
       if (!endpoint) {
+        // Prevent silent proxying of large files through Vercel Functions which triggers 413
+        if (destination.uploadUrl.startsWith("/api/") && file.size > 4.5 * 1024 * 1024) {
+          if (onProgress) {
+            onProgress({
+              percentage: 0,
+              bytesUploaded: 0,
+              bytesTotal: file.size,
+              status: "Failed",
+            });
+          }
+          return reject(
+            new Error(
+              `Direct upload failed: Audio file (${(file.size / (1024 * 1024)).toFixed(1)} MB) cannot be uploaded because Supabase Storage is not configured. Vercel serverless functions have a 4.5 MB limit (HTTP 413). Please configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your Vercel Project Settings.`
+            )
+          );
+        }
+
         // Fallback to standard upload if no resumable endpoint is available
         const standard = new StandardSupabaseUploadStrategy();
         return standard.upload(file, destination, onProgress).then(resolve).catch(reject);

@@ -9,6 +9,8 @@ import {
 } from "./types";
 import { z } from "zod";
 import { getCachedAudio } from "@/lib/storage/audio-cache";
+import { getSupabaseServerClient, isSupabaseConfigured } from "@/lib/supabase/server";
+import { STORAGE_CONFIG } from "@/lib/storage/config";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
@@ -104,6 +106,33 @@ export class AssemblyAITranscriptionProvider implements TranscriptionProvider {
           audioBuffer = fs.readFileSync(p);
           break;
         }
+      }
+    }
+
+    // Check if audio exists in Supabase Storage
+    if (!audioBuffer && isSupabaseConfigured()) {
+      try {
+        const supabase = getSupabaseServerClient();
+        if (supabase) {
+          let cleanPath = audioPathOrRef;
+          if (cleanPath.includes("?")) {
+            try {
+              const u = new URL(cleanPath, "http://localhost");
+              cleanPath = u.searchParams.get("path") || cleanPath;
+            } catch {
+              // fallback
+            }
+          }
+          const { data, error } = await supabase.storage
+            .from(STORAGE_CONFIG.BUCKET_NAME)
+            .download(cleanPath);
+          if (!error && data) {
+            const arrayBuf = await data.arrayBuffer();
+            audioBuffer = Buffer.from(arrayBuf);
+          }
+        }
+      } catch (dbErr) {
+        console.warn("Failed to download audio from Supabase Storage for AssemblyAI upload:", dbErr);
       }
     }
 

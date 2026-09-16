@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { setCachedAudio } from "@/lib/storage/audio-cache";
 
-export async function PUT(req: NextRequest) {
+async function handleUpload(req: NextRequest) {
   try {
     const searchParams = req.nextUrl.searchParams;
     const path = searchParams.get("path");
@@ -26,4 +26,12 @@ export async function PUT(req: NextRequest) {
     const errorMessage = err instanceof Error ? err.stack || err.message : "Failed to store audio file";
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
+}
+
+export async function PUT(req: NextRequest) {
+  return handleUpload(req);
+}
+
+export async function POST(req: NextRequest) {
+  return handleUpload(req);
 }

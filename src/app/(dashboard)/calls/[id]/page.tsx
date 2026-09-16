@@ -182,7 +182,9 @@ export default function CallDetailsPage({
   // Audio Playback state
   const [signedPlaybackUrl, setSignedPlaybackUrl] = useState<string | null>(null);
   const [loadingPlayback, setLoadingPlayback] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [currentPlaybackTimeMs, setCurrentPlaybackTimeMs] = useState(0);
+  const loadedAudioPathRef = useRef<string | null>(null);
 
   // Phase 3 Transcription State
   const [transcript, setTranscript] = useState<StoredTranscript | null>(null);
@@ -205,6 +207,27 @@ export default function CallDetailsPage({
   const [speakerOverrides, setSpeakerOverrides] = useState<Record<string, SpeakerRole>>({});
   const [savingSpeakerRoles, setSavingSpeakerRoles] = useState(false);
 
+  // Explicit audio refresh handler
+  const handleRefreshPlaybackUrl = async () => {
+    if (!call?.audio_storage_path) return;
+    setLoadingPlayback(true);
+    setPlaybackError(null);
+    try {
+      const playRes = await fetch(`/api/calls/${id}/playback`);
+      const playData = await playRes.json();
+      if (playRes.ok && playData.success) {
+        setSignedPlaybackUrl(playData.signedUrl);
+        loadedAudioPathRef.current = call.audio_storage_path;
+      } else {
+        setPlaybackError(playData.error || "Failed to generate audio playback link.");
+      }
+    } catch (err: unknown) {
+      setPlaybackError(err instanceof Error ? err.message : "Error refreshing playback link.");
+    } finally {
+      setLoadingPlayback(false);
+    }
+  };
+
   // Load call & events
   const loadCallData = async (showLoadingSpinner: boolean = false) => {
     try {
@@ -219,13 +242,27 @@ export default function CallDetailsPage({
       setCall(data.call);
       setEvents(data.events || []);
 
-      // Load short-lived signed playback URL
-      if (data.call.audio_storage_path) {
+      // Load short-lived signed playback URL only if not already loaded for this path
+      // Prevents re-creating the audio element and losing playback position on data polls
+      if (
+        data.call.audio_storage_path &&
+        loadedAudioPathRef.current !== data.call.audio_storage_path
+      ) {
         setLoadingPlayback(true);
-        const playRes = await fetch(`/api/calls/${id}/playback`);
-        const playData = await playRes.json();
-        if (playRes.ok && playData.success) {
-          setSignedPlaybackUrl(playData.signedUrl);
+        try {
+          const playRes = await fetch(`/api/calls/${id}/playback`);
+          const playData = await playRes.json();
+          if (playRes.ok && playData.success) {
+            setSignedPlaybackUrl(playData.signedUrl);
+            loadedAudioPathRef.current = data.call.audio_storage_path;
+            setPlaybackError(null);
+          } else {
+            console.warn("Failed to load signed playback URL:", playData.error);
+          }
+        } catch (playErr) {
+          console.warn("Playback URL fetch failed:", playErr);
+        } finally {
+          setLoadingPlayback(false);
         }
       }
 
@@ -240,10 +277,14 @@ export default function CallDetailsPage({
         await loadAuditData();
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error loading call.");
+      const msg = err instanceof Error ? err.message : "Error loading call.";
+      // Only set fatal page error if call was never loaded initially
+      setCall((prev) => {
+        if (!prev) setError(msg);
+        return prev;
+      });
     } finally {
       setLoading(false);
-      setLoadingPlayback(false);
     }
   };
 
@@ -303,11 +344,26 @@ export default function CallDetailsPage({
     }
   };
 
-  // Seek to utterance or evidence timestamp
+  // Seek to utterance or evidence timestamp with buffering resilience
   const handleSeekToUtterance = (startMs: number) => {
     if (audioRef.current) {
-      audioRef.current.currentTime = startMs / 1000;
-      audioRef.current.play().catch(() => {});
+      const targetSec = startMs / 1000;
+      if (audioRef.current.readyState >= 1) {
+        audioRef.current.currentTime = targetSec;
+        audioRef.current.play().catch(() => {});
+      } else {
+        audioRef.current.addEventListener(
+          "canplay",
+          () => {
+            if (audioRef.current) {
+              audioRef.current.currentTime = targetSec;
+              audioRef.current.play().catch(() => {});
+            }
+          },
+          { once: true }
+        );
+        audioRef.current.load();
+      }
     }
   };
 
@@ -335,8 +391,6 @@ export default function CallDetailsPage({
         const syncRes = await fetch(`/api/calls/${id}/transcribe`);
         const syncData = await syncRes.json();
         if (syncData.completed || syncData.status === "TRANSCRIBED" || syncData.status === "FAILED") {
-          await loadCallData();
-          await loadTranscriptData();
           break;
         }
       }
@@ -452,7 +506,7 @@ export default function CallDetailsPage({
   // Latest Audit Run
   const latestRun = auditRuns.length > 0 ? auditRuns[0] : null;
 
-  if (loading) {
+  if (loading && !call) {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-3">
         <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
@@ -461,13 +515,15 @@ export default function CallDetailsPage({
     );
   }
 
-  if (error || !call) {
+  if (!call) {
     return (
       <div className="p-8 text-center space-y-4">
         <div className="w-12 h-12 rounded-xl bg-red-950 text-red-400 border border-red-800 flex items-center justify-center mx-auto">
           <AlertCircle className="w-6 h-6" />
         </div>
-        <h2 className="text-base font-bold text-white">Call Not Found</h2>
+        <h2 className="text-base font-bold text-white">
+          {error ? "Call Could Not Be Loaded" : "Call Not Found"}
+        </h2>
         <p className="text-xs text-slate-400">{error || "Requested call could not be located."}</p>
         <Link
           href="/calls"
@@ -633,18 +689,59 @@ export default function CallDetailsPage({
             <Volume2 className="w-5 h-5 text-cyan-400" />
             <h2 className="text-sm font-bold text-white">Private Recording Playback</h2>
           </div>
-          <div className="flex items-center space-x-2 text-xs text-indigo-300">
-            <Lock className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Secured with Short-Lived Signed URL</span>
+          <div className="flex items-center space-x-3 text-xs">
+            <button
+              onClick={handleRefreshPlaybackUrl}
+              disabled={loadingPlayback}
+              className="flex items-center space-x-1 text-slate-400 hover:text-cyan-300 transition-colors cursor-pointer"
+              title="Refresh signed audio token"
+            >
+              <RefreshCw className={`w-3 h-3 ${loadingPlayback ? "animate-spin text-cyan-400" : ""}`} />
+              <span>{loadingPlayback ? "Renewing..." : "Renew Token"}</span>
+            </button>
+            <div className="flex items-center space-x-1 text-indigo-300">
+              <Lock className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Secured Signed URL</span>
+            </div>
           </div>
         </div>
+
+        {playbackError && (
+          <div className="p-3.5 rounded-xl bg-amber-950/50 border border-amber-800/80 flex items-center justify-between text-xs text-amber-300">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+              <span>{playbackError}</span>
+            </div>
+            <button
+              onClick={handleRefreshPlaybackUrl}
+              className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-[11px] cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {signedPlaybackUrl ? (
           <div className="space-y-3">
             <audio
               ref={audioRef}
               controls
+              preload="metadata"
               onTimeUpdate={handleTimeUpdate}
+              onError={() => {
+                const code = audioRef.current?.error?.code;
+                const message =
+                  code === 1
+                    ? "Audio playback aborted."
+                    : code === 2
+                    ? "Network error loading audio."
+                    : code === 3
+                    ? "Audio decoding failed (format error)."
+                    : code === 4
+                    ? "Signed playback link expired or file not found in storage."
+                    : "Unable to stream audio recording.";
+                setPlaybackError(message);
+              }}
               className="w-full h-11 rounded-lg outline-none bg-slate-950"
               src={signedPlaybackUrl}
             >

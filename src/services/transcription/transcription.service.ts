@@ -151,7 +151,7 @@ export class TranscriptionService {
     let submission;
     try {
       submission = await provider.submit({
-        audioUrl: call.audio_storage_path, // AssemblyAI provider handles external signed or direct upload
+        audioUrl: signed.signedUrl, // AssemblyAI provider handles external signed or direct upload
         language: "en",
         speakerMode: options?.speakerMode || "AUTO",
         webhookUrl: webhookUrl || undefined,
@@ -472,7 +472,7 @@ export class TranscriptionService {
    * Useful in development when public webhooks cannot reach localhost.
    */
   static async syncJobStatus(callId: string): Promise<{ status: string; completed: boolean }> {
-    const call = CallService.getRawCall(callId);
+    const call = (await CallService.getCallRecord(callId)) || CallService.getRawCall(callId);
     if (!call) {
       throw new Error(`Call [${callId}] not found.`);
     }
@@ -481,8 +481,15 @@ export class TranscriptionService {
       return { status: call.processing_status, completed: call.processing_status === "TRANSCRIBED" };
     }
 
-    const jobs = Array.from(jobsStore.values()).filter((j) => j.call_id === callId);
-    const pendingJob = jobs.find((j) => j.status === "PROCESSING" || j.status === "QUEUED");
+    let jobs = Array.from(jobsStore.values()).filter((j) => j.call_id === callId);
+    let pendingJob = jobs.find((j) => j.status === "PROCESSING" || j.status === "QUEUED");
+    if (!pendingJob) {
+      const dbJobs = await this.getJobsForCall(callId);
+      for (const dj of dbJobs) {
+        jobsStore.set(dj.provider_transcript_id, dj);
+      }
+      pendingJob = dbJobs.find((j) => j.status === "PROCESSING" || j.status === "QUEUED");
+    }
     if (!pendingJob) {
       return { status: call.processing_status, completed: false };
     }
@@ -518,7 +525,7 @@ export class TranscriptionService {
     userContext: UserAuthContext,
     options?: { speakerMode?: "AUTO" | "EXACT_TWO"; forceMock?: boolean }
   ): Promise<{ job: StoredTranscriptionJob; isNew: boolean }> {
-    const call = CallService.getRawCall(callId);
+    const call = (await CallService.getCallRecord(callId)) || CallService.getRawCall(callId);
     if (!call) {
       throw new Error(`Call [${callId}] not found.`);
     }

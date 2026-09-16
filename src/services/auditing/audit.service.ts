@@ -131,7 +131,7 @@ export class AuditService {
     }
 
     // 2. Fetch and validate call record
-    const call = CallService.getRawCall(callId);
+    const call = (await CallService.getCallRecord(callId)) || CallService.getRawCall(callId);
     if (!call) {
       throw new Error(`Call [${callId}] not found.`);
     }
@@ -417,7 +417,7 @@ export class AuditService {
     audit: StoredAudit | null;
     runs: StoredAuditRun[];
   }> {
-    const call = CallService.getRawCall(callId);
+    const call = (await CallService.getCallRecord(callId)) || CallService.getRawCall(callId);
     if (!call) {
       throw new Error(`Call [${callId}] not found.`);
     }

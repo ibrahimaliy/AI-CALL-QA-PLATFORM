@@ -6,6 +6,7 @@ import { AuthorizationService, UserAuthContext } from "../auth/authorization";
 import { INITIAL_AGENT, INITIAL_CAMPAIGN, INITIAL_SCORECARD, INITIAL_ORGANIZATION } from "@/lib/seed-data";
 import { getGlobalStores } from "@/lib/store/global-store";
 import { SupabaseRepository } from "@/lib/db/supabase-repository";
+import { assertProductionStatelessness } from "@/lib/supabase/server";
 
 // Centralized global persistent data store accessor
 function getStores() {
@@ -51,8 +52,9 @@ export class CallService {
     };
     isExisting: boolean;
   }> {
-    // 1. Check Authorization
+    // 1. Check Authorization & Production Deployment Preconditions
     AuthorizationService.assertCanCreateCall(userContext);
+    assertProductionStatelessness();
 
     // 2. Idempotency check: Look for existing call with same clientRequestId in this organization
     const stores = getStores();

@@ -150,7 +150,17 @@ export class SupabaseRepository {
       updated_at: call.updated_at || new Date().toISOString(),
     };
 
-    const { error } = await supabase.from("calls").upsert(row);
+    let { error } = await supabase.from("calls").upsert(row);
+    if (
+      error &&
+      error.message?.includes("call_processing_status") &&
+      (row.processing_status === "UPLOADING" || (row.processing_status as string) === "PENDING_UPLOAD")
+    ) {
+      // Fallback for un-migrated database enum
+      row.processing_status = "UPLOADED";
+      const retry = await supabase.from("calls").upsert(row);
+      error = retry.error;
+    }
     if (error) {
       console.error("Supabase saveCall error:", error);
       throw new Error(`Database error saving call [${call.id}]: ${error.message}`);
@@ -396,7 +406,7 @@ export class SupabaseRepository {
       created_at: transcript.created_at,
     };
 
-    const { error: tErr } = await supabase.from("transcripts").upsert(transcriptRow);
+    const { error: tErr } = await supabase.from("transcripts").upsert(transcriptRow, { onConflict: "call_id" });
     if (tErr) {
       console.error("Supabase saveTranscript error:", tErr);
       throw new Error(`Database error saving transcript: ${tErr.message}`);

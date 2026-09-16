@@ -54,7 +54,7 @@ export class ReviewService {
       throw new Error(`Audit [${auditId}] not found.`);
     }
 
-    const call = CallService.getRawCall(auditData.call_id);
+    const call = (await CallService.getCallRecord(auditData.call_id)) || CallService.getRawCall(auditData.call_id);
     if (!call) {
       throw new Error(`Call [${auditData.call_id}] not found.`);
     }
@@ -186,7 +186,7 @@ export class ReviewService {
       throw new Error(`Role '${userContext.role}' is not authorized to edit reviews.`);
     }
 
-    const call = CallService.getRawCall(review.call_id);
+    const call = (await CallService.getCallRecord(review.call_id)) || CallService.getRawCall(review.call_id);
     if (call && call.agent_id === userContext.userId) {
       throw new Error("Agents must not review their own audit (Section 12).");
     }
@@ -398,7 +398,7 @@ export class ReviewService {
     reviewsStore.set(reviewId, review);
 
     // Transition call to COMPLETED (Section 65)
-    const call = CallService.getRawCall(review.call_id);
+    const call = (await CallService.getCallRecord(review.call_id)) || CallService.getRawCall(review.call_id);
     if (call) {
       call.processing_status = "COMPLETED";
       call.updated_at = now;

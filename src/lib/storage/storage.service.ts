@@ -89,6 +89,16 @@ export class StorageService {
     );
 
     const supabaseConfigured = isSupabaseConfigured();
+    const isVercel = process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV);
+    const isProduction = process.env.NODE_ENV === "production";
+
+    if ((isVercel || isProduction) && !supabaseConfigured) {
+      throw new Error(
+        "Production deployment on Vercel requires Supabase Storage. " +
+        "Please configure NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY in your Vercel Project Settings."
+      );
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 

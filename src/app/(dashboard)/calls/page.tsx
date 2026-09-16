@@ -53,6 +53,36 @@ export default function CallsPage() {
 
   const getStatusBadge = (status: CallProcessingStatus) => {
     switch (status) {
+      case "COMPLETED":
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+            COMPLETED
+          </span>
+        );
+      case "REVIEW_REQUIRED":
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800">
+            REVIEW_REQUIRED
+          </span>
+        );
+      case "AUDITING":
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800 animate-pulse">
+            AUDITING
+          </span>
+        );
+      case "TRANSCRIBED":
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
+            TRANSCRIBED
+          </span>
+        );
+      case "TRANSCRIBING":
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800 animate-pulse">
+            TRANSCRIBING
+          </span>
+        );
       case "UPLOADED":
         return (
           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
@@ -125,9 +155,14 @@ export default function CallsPage() {
           >
             <option value="ALL">All Statuses</option>
             <option value="UPLOADED">UPLOADED</option>
+            <option value="TRANSCRIBING">TRANSCRIBING</option>
+            <option value="TRANSCRIBED">TRANSCRIBED</option>
+            <option value="AUDITING">AUDITING</option>
+            <option value="REVIEW_REQUIRED">REVIEW_REQUIRED</option>
+            <option value="COMPLETED">COMPLETED</option>
+            <option value="FAILED">FAILED</option>
             <option value="UPLOADING">UPLOADING</option>
             <option value="PENDING_UPLOAD">PENDING_UPLOAD</option>
-            <option value="FAILED">FAILED</option>
           </select>
         </div>
       </div>
