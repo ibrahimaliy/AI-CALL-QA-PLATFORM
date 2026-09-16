@@ -7,7 +7,7 @@ import {
   TranscriptionJobStatus,
 } from "@/lib/providers/transcription/types";
 import { StoredTranscript, StoredTranscriptionJob } from "@/services/transcription/transcription.service";
-import { INITIAL_AGENT, INITIAL_CAMPAIGN, INITIAL_SCORECARD } from "@/lib/seed-data";
+import { INITIAL_ORGANIZATION, INITIAL_AGENT, INITIAL_CAMPAIGN, INITIAL_SCORECARD } from "@/lib/seed-data";
 
 export class SupabaseRepository {
   /**
@@ -20,6 +20,82 @@ export class SupabaseRepository {
   // ==========================================
   // CALLS
   // ==========================================
+
+  static async ensureOrganization(orgId: string = INITIAL_ORGANIZATION.id): Promise<void> {
+    assertProductionStatelessness();
+    const supabase = getSupabaseServerClient();
+    if (!supabase) return;
+
+    try {
+      const { data: existing } = await supabase
+        .from("organizations")
+        .select("id")
+        .eq("id", orgId)
+        .maybeSingle();
+
+      if (!existing) {
+        const { error } = await supabase.from("organizations").upsert(
+          {
+            id: orgId,
+            name: INITIAL_ORGANIZATION.name,
+            slug: INITIAL_ORGANIZATION.slug,
+            active: true,
+          },
+          { onConflict: "id" }
+        );
+        if (error) {
+          // If slug conflict, try with unique slug suffix
+          await supabase.from("organizations").upsert(
+            {
+              id: orgId,
+              name: INITIAL_ORGANIZATION.name,
+              slug: `${INITIAL_ORGANIZATION.slug}-${orgId.slice(0, 8)}`,
+              active: true,
+            },
+            { onConflict: "id" }
+          );
+        }
+      }
+    } catch (err) {
+      console.warn("ensureOrganization non-fatal notice:", err);
+    }
+  }
+
+  static async ensureScorecard(
+    scorecardId?: string | null,
+    orgId: string = INITIAL_ORGANIZATION.id,
+    campaignId: string = INITIAL_CAMPAIGN.id
+  ): Promise<void> {
+    if (!scorecardId) return;
+    assertProductionStatelessness();
+    const supabase = getSupabaseServerClient();
+    if (!supabase) return;
+
+    try {
+      const { data: existing } = await supabase
+        .from("scorecards")
+        .select("id")
+        .eq("id", scorecardId)
+        .maybeSingle();
+
+      if (!existing) {
+        await supabase.from("scorecards").upsert(
+          {
+            id: scorecardId,
+            organization_id: orgId,
+            campaign_id: campaignId,
+            name: INITIAL_SCORECARD.name,
+            version: INITIAL_SCORECARD.version,
+            passing_score: INITIAL_SCORECARD.passing_score,
+            status: "published",
+          },
+          { onConflict: "id" }
+        );
+      }
+    } catch (err) {
+      console.warn("ensureScorecard notice:", err);
+    }
+  }
 
   static async ensureAgentAndCampaign(
     agent?: {
@@ -40,11 +116,14 @@ export class SupabaseRepository {
     if (!supabase) return;
 
     try {
+      const orgId = agent?.organization_id || campaign?.organization_id || INITIAL_ORGANIZATION.id;
+      await this.ensureOrganization(orgId);
+
       if (campaign?.id && campaign?.name) {
         await supabase.from("campaigns").upsert(
           {
             id: campaign.id,
-            organization_id: campaign.organization_id,
+            organization_id: campaign.organization_id || orgId,
             name: campaign.name,
             active: true,
           },
@@ -56,7 +135,7 @@ export class SupabaseRepository {
         await supabase.from("agents").upsert(
           {
             id: agent.id,
-            organization_id: agent.organization_id,
+            organization_id: agent.organization_id || orgId,
             campaign_id: agent.campaign_id || null,
             name: agent.name,
             employee_code: agent.employee_code || `AGT-${agent.id.slice(0, 4).toUpperCase()}`,
@@ -128,7 +207,13 @@ export class SupabaseRepository {
     const supabase = getSupabaseServerClient();
     if (!supabase) return;
 
-    const row = {
+    // Ensure organization and scorecard exist before inserting call record
+    await this.ensureOrganization(call.organization_id);
+    if (call.scorecard_id) {
+      await this.ensureScorecard(call.scorecard_id, call.organization_id, call.campaign_id);
+    }
+
+    const row: Record<string, any> = {
       id: call.id,
       organization_id: call.organization_id,
       campaign_id: call.campaign_id,
@@ -151,16 +236,34 @@ export class SupabaseRepository {
     };
 
     let { error } = await supabase.from("calls").upsert(row);
+
+    // Fallback 1: Un-migrated database enum
     if (
       error &&
       error.message?.includes("call_processing_status") &&
       (row.processing_status === "UPLOADING" || (row.processing_status as string) === "PENDING_UPLOAD")
     ) {
-      // Fallback for un-migrated database enum
       row.processing_status = "UPLOADED";
       const retry = await supabase.from("calls").upsert(row);
       error = retry.error;
     }
+
+    // Fallback 2: Foreign key violation on organization
+    if (error && error.message?.includes("calls_organization_id_fkey")) {
+      await this.ensureOrganization(call.organization_id);
+      const retry = await supabase.from("calls").upsert(row);
+      error = retry.error;
+    }
+
+    // Fallback 3: Foreign key violation on optional references (campaign, agent, scorecard)
+    if (error && error.message?.includes("violates foreign key constraint")) {
+      if (error.message.includes("campaign")) row.campaign_id = null;
+      if (error.message.includes("agent")) row.agent_id = null;
+      if (error.message.includes("scorecard")) row.scorecard_id = null;
+      const retry = await supabase.from("calls").upsert(row);
+      error = retry.error;
+    }
+
     if (error) {
       console.error("Supabase saveCall error:", error);
       throw new Error(`Database error saving call [${call.id}]: ${error.message}`);
