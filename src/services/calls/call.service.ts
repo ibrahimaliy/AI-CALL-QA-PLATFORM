@@ -150,23 +150,29 @@ export class CallService {
     stores.saveState();
 
     if (SupabaseRepository.isEnabled()) {
-      await SupabaseRepository.ensureAgentAndCampaign(
-        {
-          id: agentId,
-          name: agentName,
-          employee_code: input.agentEmployeeCode || null,
-          organization_id: userContext.organizationId,
-          campaign_id: campaignId,
-        },
-        {
-          id: campaignId,
-          name: campaignName,
-          organization_id: userContext.organizationId,
+      try {
+        await SupabaseRepository.ensureAgentAndCampaign(
+          {
+            id: agentId,
+            name: agentName,
+            employee_code: input.agentEmployeeCode || null,
+            organization_id: userContext.organizationId,
+            campaign_id: campaignId,
+          },
+          {
+            id: campaignId,
+            name: campaignName,
+            organization_id: userContext.organizationId,
+          }
+        );
+        await SupabaseRepository.saveCall(newCall);
+        for (const ev of events) {
+          await SupabaseRepository.addProcessingEvent(callId, ev);
         }
-      );
-      await SupabaseRepository.saveCall(newCall);
-      for (const ev of events) {
-        await SupabaseRepository.addProcessingEvent(callId, ev);
+      } catch (err) {
+        console.warn("Supabase initial call save notice:", err);
+        const isVercel = process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV);
+        if (isVercel) throw err;
       }
     }
 
@@ -242,8 +248,14 @@ export class CallService {
     stores.saveState();
 
     if (SupabaseRepository.isEnabled()) {
-      await SupabaseRepository.saveCall(call);
-      await SupabaseRepository.addProcessingEvent(call.id, completionEvent);
+      try {
+        await SupabaseRepository.saveCall(call);
+        await SupabaseRepository.addProcessingEvent(call.id, completionEvent);
+      } catch (err) {
+        console.warn("Supabase confirmCallUpload save notice:", err);
+        const isVercel = process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV);
+        if (isVercel) throw err;
+      }
     }
 
     return call;

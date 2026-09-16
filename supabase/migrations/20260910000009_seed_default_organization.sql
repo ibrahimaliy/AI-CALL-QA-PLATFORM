@@ -1,6 +1,38 @@
 -- Migration 20260910000009: Seed default organization and baseline campaign/scorecard
 -- Prevents calls_organization_id_fkey foreign key constraint violations
 
+-- 1. Ensure RLS policies exist for organizations, campaigns, agents
+DO $$ BEGIN
+    CREATE POLICY "Allow public read organizations" ON organizations FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "Allow insert organizations" ON organizations FOR INSERT WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "Allow public read campaigns" ON campaigns FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "Allow insert campaigns" ON campaigns FOR INSERT WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "Allow public read agents" ON agents FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "Allow insert agents" ON agents FOR INSERT WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+-- 2. Seed default organization, campaigns, agents, scorecards
 INSERT INTO organizations (id, name, slug, active)
 VALUES (
     'a0000000-0000-0000-0000-000000000001',
