@@ -111,7 +111,40 @@ export class StorageService {
     let resumableEndpoint: string | undefined = undefined;
 
     if (supabaseConfigured) {
-      uploadUrl = `${supabaseUrl}/storage/v1/object/${STORAGE_CONFIG.BUCKET_NAME}/${storagePath}`;
+      try {
+        const supabase = getSupabaseServerClient();
+        if (supabase) {
+          // 1. Ensure bucket exists and has correct size limit
+          try {
+            const { data: buckets } = await supabase.storage.listBuckets();
+            const bucketExists = buckets?.some((b: { name: string }) => b.name === STORAGE_CONFIG.BUCKET_NAME);
+            if (!bucketExists) {
+              await supabase.storage.createBucket(STORAGE_CONFIG.BUCKET_NAME, {
+                public: false,
+                fileSizeLimit: 52428800, // 50MB
+              });
+            }
+          } catch (bucketErr) {
+            console.warn("createBucket check notice:", bucketErr);
+          }
+
+          // 2. Generate signed upload URL (bypasses RLS on storage.objects)
+          const { data: signedData, error: signErr } = await supabase.storage
+            .from(STORAGE_CONFIG.BUCKET_NAME)
+            .createSignedUploadUrl(storagePath, { upsert: true });
+
+          if (signedData?.signedUrl && !signErr) {
+            uploadUrl = signedData.signedUrl;
+          } else {
+            console.warn("createSignedUploadUrl notice:", signErr?.message);
+            uploadUrl = `${supabaseUrl}/storage/v1/object/${STORAGE_CONFIG.BUCKET_NAME}/${storagePath}`;
+          }
+        }
+      } catch (storageErr) {
+        console.warn("Error creating signed upload URL in Supabase:", storageErr);
+        uploadUrl = `${supabaseUrl}/storage/v1/object/${STORAGE_CONFIG.BUCKET_NAME}/${storagePath}`;
+      }
+
       uploadHeaders["apikey"] = anonKey;
       uploadHeaders["Authorization"] = `Bearer ${anonKey}`;
       resumableEndpoint = `${supabaseUrl}/storage/v1/upload/resumable`;

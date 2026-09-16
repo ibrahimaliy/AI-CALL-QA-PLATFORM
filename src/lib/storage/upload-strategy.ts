@@ -49,12 +49,21 @@ export class StandardSupabaseUploadStrategy implements AudioUploadStrategy {
   ): Promise<UploadResult> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      const method = destination.uploadUrl.includes("/storage/v1/object/") ? "POST" : "PUT";
+      const isSignedUpload = destination.uploadUrl.includes("/upload/sign/");
+      const method = isSignedUpload
+        ? "PUT"
+        : destination.uploadUrl.includes("/storage/v1/object/")
+        ? "POST"
+        : "PUT";
       xhr.open(method, destination.uploadUrl, true);
 
       // Set headers from upload authorization
       if (destination.uploadHeaders) {
         for (const [key, value] of Object.entries(destination.uploadHeaders)) {
+          // Do not send apikey or authorization header to signed upload URL if not needed
+          if (isSignedUpload && (key.toLowerCase() === "authorization" || key.toLowerCase() === "apikey")) {
+            continue;
+          }
           xhr.setRequestHeader(key, value);
         }
       }
@@ -200,6 +209,17 @@ export class ResumableSupabaseUploadStrategy implements AudioUploadStrategy {
         },
         chunkSize: 6 * 1024 * 1024, // 6MB per chunk recommended by Supabase Storage
         onError: (error) => {
+          const errMsg = String(error?.message || error);
+          if (
+            errMsg.includes("row-level security") ||
+            errMsg.includes("403") ||
+            errMsg.includes("Unauthorized")
+          ) {
+            console.warn("TUS upload blocked by RLS policy. Falling back to signed direct upload...");
+            const standard = new StandardSupabaseUploadStrategy();
+            standard.upload(file, destination, onProgress).then(resolve).catch(reject);
+            return;
+          }
           if (onProgress) {
             onProgress({
               percentage: 0,
@@ -208,7 +228,7 @@ export class ResumableSupabaseUploadStrategy implements AudioUploadStrategy {
               status: "Failed",
             });
           }
-          reject(new Error(`Resumable storage upload error: ${error.message || error}`));
+          reject(new Error(`Resumable storage upload error: ${errMsg}`));
         },
         onProgress: (bytesUploaded, bytesTotal) => {
           if (onProgress && bytesTotal > 0) {
