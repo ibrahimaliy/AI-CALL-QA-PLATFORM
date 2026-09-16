@@ -19,6 +19,8 @@ import {
   INITIAL_CAMPAIGN,
   INITIAL_SCORECARD,
   INITIAL_ORGANIZATION,
+  SAMPLE_AGENTS,
+  SAMPLE_CAMPAIGNS,
 } from "@/lib/seed-data";
 import { STORAGE_CONFIG } from "@/lib/storage/config";
 import { selectUploadStrategy } from "@/lib/storage/upload-strategy";
@@ -51,17 +53,32 @@ export default function NewCallPage() {
   const formKeyId = useId();
 
   // Form Fields
-  const [agentId, setAgentId] = useState(INITIAL_AGENT.id);
-  const [campaignId, setCampaignId] = useState(INITIAL_CAMPAIGN.id);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>(INITIAL_AGENT.id);
+  const [customAgentName, setCustomAgentName] = useState("");
+  const [customAgentCode, setCustomAgentCode] = useState("");
+
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>(INITIAL_CAMPAIGN.id);
+  const [customCampaignName, setCustomCampaignName] = useState("");
+
   const [scorecardId, setScorecardId] = useState(INITIAL_SCORECARD.id);
-  const [interactionDate, setInteractionDate] = useState("2026-09-10");
-  const [interactionTime, setInteractionTime] = useState("09:15:00");
-  const [jiraTransaction, setJiraTransaction] = useState("NGCC-2533890");
-  const [customerPhone, setCustomerPhone] = useState("07020209088");
+  const [interactionDate, setInteractionDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [interactionTime, setInteractionTime] = useState(() => new Date().toTimeString().slice(0, 8));
+  const [jiraTransaction, setJiraTransaction] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const [issueType, setIssueType] = useState("Account & Service Inquiry");
   const [queryCount, setQueryCount] = useState(1);
-  const [externalCallId, setExternalCallId] = useState("EXT-991204");
+  const [externalCallId, setExternalCallId] = useState("");
   const [notes, setNotes] = useState("");
+
+  const handleAutoGenerateJira = () => {
+    const randomDigits = Math.floor(1000000 + Math.random() * 9000000);
+    setJiraTransaction(`NGCC-${randomDigits}`);
+  };
+
+  const handleAutoGenerateTelephony = () => {
+    const randomDigits = Math.floor(100000 + Math.random() * 900000);
+    setExternalCallId(`EXT-${randomDigits}`);
+  };
 
   // File State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -117,29 +134,65 @@ export default function NewCallPage() {
     setUploadStep("VALIDATING");
 
     try {
-      // 1. Mask customer phone number per Section 19: e.g. *9088
-      const maskedPhone =
-        customerPhone.length > 4
-          ? `*${customerPhone.slice(-4)}`
-          : customerPhone;
+      // 1. Resolve Agent attributes
+      let resolvedAgentId = selectedAgentId;
+      let resolvedAgentName = INITIAL_AGENT.name;
+      let resolvedAgentCode = INITIAL_AGENT.employee_code;
 
-      // 2. Request Upload Authorization (POST /api/calls/upload-intent)
+      if (selectedAgentId === "__CUSTOM__") {
+        resolvedAgentId = crypto.randomUUID();
+        resolvedAgentName = customAgentName.trim() || "Custom Support Agent";
+        resolvedAgentCode = customAgentCode.trim() || `AGT-${resolvedAgentId.slice(0, 4).toUpperCase()}`;
+      } else {
+        const found = SAMPLE_AGENTS.find((a) => a.id === selectedAgentId);
+        if (found) {
+          resolvedAgentName = found.name;
+          resolvedAgentCode = found.employee_code;
+        }
+      }
+
+      // 2. Resolve Campaign attributes
+      let resolvedCampaignId = selectedCampaignId;
+      let resolvedCampaignName = INITIAL_CAMPAIGN.name;
+
+      if (selectedCampaignId === "__CUSTOM__") {
+        resolvedCampaignId = crypto.randomUUID();
+        resolvedCampaignName = customCampaignName.trim() || "Custom Queue / Line of Business";
+      } else {
+        const found = SAMPLE_CAMPAIGNS.find((c) => c.id === selectedCampaignId);
+        if (found) {
+          resolvedCampaignName = found.name;
+        }
+      }
+
+      // 3. Mask customer phone number per Section 19: e.g. *9088
+      const trimmedPhone = customerPhone.trim();
+      const maskedPhone =
+        trimmedPhone.length > 4
+          ? `*${trimmedPhone.slice(-4)}`
+          : trimmedPhone || null;
+
+      // 4. Request Upload Authorization (POST /api/calls/upload-intent)
       setUploadStep("CREATING_CALL");
 
       const intentRes = await fetch("/api/calls/upload-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentId,
-          campaignId,
+          agentId: resolvedAgentId,
+          agentName: resolvedAgentName,
+          agentEmployeeCode: resolvedAgentCode,
+          campaignId: resolvedCampaignId,
+          campaignName: resolvedCampaignName,
           scorecardId,
+          scorecardName: INITIAL_SCORECARD.name,
           interactionDate,
           interactionTime,
-          jiraTransactionNumber: jiraTransaction,
+          jiraTransactionNumber: jiraTransaction.trim() || null,
           customerPhoneMasked: maskedPhone,
-          issueType,
+          issueType: issueType.trim() || "General Inquiry",
           queryCount,
-          externalCallId,
+          externalCallId: externalCallId.trim() || null,
           clientRequestId,
           fileName: selectedFile.name,
           fileSizeBytes: selectedFile.size,
@@ -296,14 +349,19 @@ export default function NewCallPage() {
                 Support Agent *
               </label>
               <select
-                value={agentId}
-                onChange={(e) => setAgentId(e.target.value)}
+                value={selectedAgentId}
+                onChange={(e) => setSelectedAgentId(e.target.value)}
                 disabled={isSubmitting}
                 className="w-full bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-200 px-3 py-2.5 focus:outline-none focus:border-cyan-500"
               >
-                <option value={INITIAL_AGENT.id}>
-                  {INITIAL_AGENT.name} ({INITIAL_AGENT.employee_code})
-                </option>
+                <optgroup label="Registered Agents">
+                  {SAMPLE_AGENTS.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name} ({agent.employee_code})
+                    </option>
+                  ))}
+                </optgroup>
+                <option value="__CUSTOM__">➕ Add Custom Support Agent...</option>
               </select>
             </div>
 
@@ -313,12 +371,19 @@ export default function NewCallPage() {
                 Campaign / Line of Business *
               </label>
               <select
-                value={campaignId}
-                onChange={(e) => setCampaignId(e.target.value)}
+                value={selectedCampaignId}
+                onChange={(e) => setSelectedCampaignId(e.target.value)}
                 disabled={isSubmitting}
                 className="w-full bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-200 px-3 py-2.5 focus:outline-none focus:border-cyan-500"
               >
-                <option value={INITIAL_CAMPAIGN.id}>{INITIAL_CAMPAIGN.name}</option>
+                <optgroup label="Standard Campaigns">
+                  {SAMPLE_CAMPAIGNS.map((camp) => (
+                    <option key={camp.id} value={camp.id}>
+                      {camp.name}
+                    </option>
+                  ))}
+                </optgroup>
+                <option value="__CUSTOM__">➕ Add Custom Campaign / Queue...</option>
               </select>
             </div>
 
@@ -339,6 +404,55 @@ export default function NewCallPage() {
               </select>
             </div>
           </div>
+
+          {/* Conditional Custom Agent Fields */}
+          {selectedAgentId === "__CUSTOM__" && (
+            <div className="p-4 rounded-xl bg-cyan-950/20 border border-cyan-800/40 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-cyan-300 mb-1">
+                  Custom Agent Full Name *
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Sarah Jenkins or Aisha Bello"
+                  value={customAgentName}
+                  onChange={(e) => setCustomAgentName(e.target.value)}
+                  disabled={isSubmitting}
+                  className="w-full bg-slate-900 border border-cyan-700/60 rounded-lg text-xs text-slate-200 px-3 py-2 focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-cyan-300 mb-1">
+                  Agent Employee Code / ID
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. AGT-2041"
+                  value={customAgentCode}
+                  onChange={(e) => setCustomAgentCode(e.target.value)}
+                  disabled={isSubmitting}
+                  className="w-full bg-slate-900 border border-cyan-700/60 rounded-lg text-xs text-slate-200 px-3 py-2 focus:outline-none focus:border-cyan-400 font-mono"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Conditional Custom Campaign Fields */}
+          {selectedCampaignId === "__CUSTOM__" && (
+            <div className="p-4 rounded-xl bg-indigo-950/20 border border-indigo-800/40">
+              <label className="block text-xs font-medium text-indigo-300 mb-1">
+                Custom Campaign / Line of Business Name *
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Fiber Retention & Escalations"
+                value={customCampaignName}
+                onChange={(e) => setCustomCampaignName(e.target.value)}
+                disabled={isSubmitting}
+                className="w-full bg-slate-900 border border-indigo-700/60 rounded-lg text-xs text-slate-200 px-3 py-2 focus:outline-none focus:border-indigo-400"
+              />
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             {/* Interaction Date */}
@@ -372,12 +486,21 @@ export default function NewCallPage() {
 
             {/* JIRA Transaction */}
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                JIRA Transaction Ref
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-medium text-slate-300">
+                  JIRA Transaction Ref
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAutoGenerateJira}
+                  className="text-[10px] text-cyan-400 hover:text-cyan-300 font-medium"
+                >
+                  Auto-Gen
+                </button>
+              </div>
               <input
                 type="text"
-                placeholder="NGCC-2533730"
+                placeholder="e.g. NGCC-2533730"
                 value={jiraTransaction}
                 onChange={(e) => setJiraTransaction(e.target.value)}
                 disabled={isSubmitting}
@@ -393,7 +516,7 @@ export default function NewCallPage() {
               </label>
               <input
                 type="text"
-                placeholder="07020209088"
+                placeholder="e.g. 07020209088"
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 disabled={isSubmitting}
@@ -409,11 +532,23 @@ export default function NewCallPage() {
               </label>
               <input
                 type="text"
+                list="common-issue-types"
                 value={issueType}
                 onChange={(e) => setIssueType(e.target.value)}
                 disabled={isSubmitting}
+                placeholder="Select or enter issue type..."
                 className="w-full bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-200 px-3 py-2 focus:outline-none focus:border-cyan-500"
               />
+              <datalist id="common-issue-types">
+                <option value="Account & Service Inquiry" />
+                <option value="Network & Connectivity Issue" />
+                <option value="Billing & Recharge Dispute" />
+                <option value="SIM Registration & KYC" />
+                <option value="Broadband / Router Troubleshooting" />
+                <option value="Value-Added Services (VAS)" />
+                <option value="Complaint & Supervisor Escalation" />
+                <option value="Product & Tariff Information" />
+              </datalist>
             </div>
 
             <div>
@@ -432,11 +567,21 @@ export default function NewCallPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                External Call ID (Telephony Ref)
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-medium text-slate-300">
+                  External Call ID (Telephony Ref)
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAutoGenerateTelephony}
+                  className="text-[10px] text-cyan-400 hover:text-cyan-300 font-medium"
+                >
+                  Auto-Gen
+                </button>
+              </div>
               <input
                 type="text"
+                placeholder="e.g. EXT-991204"
                 value={externalCallId}
                 onChange={(e) => setExternalCallId(e.target.value)}
                 disabled={isSubmitting}

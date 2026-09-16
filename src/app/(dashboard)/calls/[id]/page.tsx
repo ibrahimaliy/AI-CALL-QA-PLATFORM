@@ -1344,15 +1344,15 @@ export default function CallDetailsPage({
           <div className="space-y-2.5 text-xs">
             <div className="flex justify-between py-1 border-b border-slate-800/60">
               <span className="text-slate-400">Assigned Agent:</span>
-              <span className="text-white font-medium">{call.agent_name || "Olabiyi Boluwatife"}</span>
+              <span className="text-white font-medium">{call.agent_name || "Unassigned Agent"}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-slate-800/60">
               <span className="text-slate-400">Campaign:</span>
-              <span className="text-cyan-300 font-medium">{call.campaign_name || "Inbound Support"}</span>
+              <span className="text-cyan-300 font-medium">{call.campaign_name || "General Campaign"}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-slate-800/60">
               <span className="text-slate-400">Target Scorecard:</span>
-              <span className="text-slate-200 font-medium">{call.scorecard_name || "v1.0 (71% Pass)"}</span>
+              <span className="text-slate-200 font-medium">{call.scorecard_name || "Standard QA Scorecard"}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-slate-800/60">
               <span className="text-slate-400">External Call ID:</span>

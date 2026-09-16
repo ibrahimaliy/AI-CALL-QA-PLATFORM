@@ -13,17 +13,41 @@ VALUES (
 
 -- 2. Campaign
 INSERT INTO campaigns (id, organization_id, name, description, active)
-VALUES (
+VALUES 
+(
     'b0000000-0000-0000-0000-000000000001',
     'a0000000-0000-0000-0000-000000000001',
     'Inbound Customer Support',
     'English voice customer service and technical query support',
     true
-) ON CONFLICT (id) DO NOTHING;
+),
+(
+    'b0000000-0000-0000-0000-000000000002',
+    'a0000000-0000-0000-0000-000000000001',
+    'Technical Support & Broadband',
+    '4G LTE router troubleshooting, broadband fiber support, and speed diagnostics',
+    true
+),
+(
+    'b0000000-0000-0000-0000-000000000003',
+    'a0000000-0000-0000-0000-000000000001',
+    'Billing, Recharge & KYC',
+    'Payment disputes, SIM registration compliance, data bundle subscriptions',
+    true
+),
+(
+    'b0000000-0000-0000-0000-000000000004',
+    'a0000000-0000-0000-0000-000000000001',
+    'VIP & Enterprise Accounts',
+    'Dedicated account management and SLA escalation for corporate clients',
+    true
+)
+ON CONFLICT (id) DO NOTHING;
 
--- 3. Sample Agent (from workbook header)
+-- 3. Sample Agents
 INSERT INTO agents (id, organization_id, campaign_id, employee_code, name, email, active)
-VALUES (
+VALUES 
+(
     'c0000000-0000-0000-0000-000000000001',
     'a0000000-0000-0000-0000-000000000001',
     'b0000000-0000-0000-0000-000000000001',
@@ -31,7 +55,44 @@ VALUES (
     'Olabiyi Boluwatife Precious',
     'b.olabiyi@smiletelecom.com',
     true
-) ON CONFLICT DO NOTHING;
+),
+(
+    'c0000000-0000-0000-0000-000000000002',
+    'a0000000-0000-0000-0000-000000000001',
+    'b0000000-0000-0000-0000-000000000001',
+    'AGT-1082',
+    'Aisha Mohammed',
+    'a.mohammed@smiletelecom.com',
+    true
+),
+(
+    'c0000000-0000-0000-0000-000000000003',
+    'a0000000-0000-0000-0000-000000000001',
+    'b0000000-0000-0000-0000-000000000002',
+    'AGT-1130',
+    'Chinedu Eze',
+    'c.eze@smiletelecom.com',
+    true
+),
+(
+    'c0000000-0000-0000-0000-000000000004',
+    'a0000000-0000-0000-0000-000000000001',
+    'b0000000-0000-0000-0000-000000000001',
+    'AGT-1194',
+    'Fatima Bello',
+    'f.bello@smiletelecom.com',
+    true
+),
+(
+    'c0000000-0000-0000-0000-000000000005',
+    'a0000000-0000-0000-0000-000000000001',
+    'b0000000-0000-0000-0000-000000000003',
+    'AGT-1215',
+    'David Adeleke',
+    'd.adeleke@smiletelecom.com',
+    true
+)
+ON CONFLICT (id) DO NOTHING;
 
 -- 4. Scorecard Version 1.0 (Passing score: 71.00)
 INSERT INTO scorecards (id, organization_id, campaign_id, name, description, version, passing_score, status, effective_from)

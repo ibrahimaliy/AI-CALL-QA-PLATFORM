@@ -57,3 +57,6 @@ scratch/
 
 # logs
 *.log
+
+# supabase
+supabase/.temp/

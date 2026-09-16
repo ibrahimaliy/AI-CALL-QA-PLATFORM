@@ -4,9 +4,13 @@ import { STORAGE_CONFIG } from "@/lib/storage/config";
 const UUIDSchema = z.string().regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/, "Invalid UUID format");
 
 export const CreateCallUploadIntentSchema = z.object({
-  agentId: UUIDSchema,
-  campaignId: UUIDSchema,
-  scorecardId: UUIDSchema,
+  agentId: UUIDSchema.optional().nullable(),
+  agentName: z.string().optional().nullable(),
+  agentEmployeeCode: z.string().optional().nullable(),
+  campaignId: UUIDSchema.optional().nullable(),
+  campaignName: z.string().optional().nullable(),
+  scorecardId: UUIDSchema.optional().nullable(),
+  scorecardName: z.string().optional().nullable(),
   interactionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (expected YYYY-MM-DD)"),
   interactionTime: z.string().min(4),
   issueType: z.string().min(2, "Issue type is required"),

@@ -21,6 +21,55 @@ export class SupabaseRepository {
   // CALLS
   // ==========================================
 
+  static async ensureAgentAndCampaign(
+    agent?: {
+      id: string;
+      name: string;
+      employee_code?: string | null;
+      organization_id: string;
+      campaign_id?: string | null;
+    } | null,
+    campaign?: {
+      id: string;
+      name: string;
+      organization_id: string;
+    } | null
+  ): Promise<void> {
+    assertProductionStatelessness();
+    const supabase = getSupabaseServerClient();
+    if (!supabase) return;
+
+    try {
+      if (campaign?.id && campaign?.name) {
+        await supabase.from("campaigns").upsert(
+          {
+            id: campaign.id,
+            organization_id: campaign.organization_id,
+            name: campaign.name,
+            active: true,
+          },
+          { onConflict: "id" }
+        );
+      }
+
+      if (agent?.id && agent?.name) {
+        await supabase.from("agents").upsert(
+          {
+            id: agent.id,
+            organization_id: agent.organization_id,
+            campaign_id: agent.campaign_id || null,
+            name: agent.name,
+            employee_code: agent.employee_code || `AGT-${agent.id.slice(0, 4).toUpperCase()}`,
+            active: true,
+          },
+          { onConflict: "id" }
+        );
+      }
+    } catch (err) {
+      console.warn("ensureAgentAndCampaign non-fatal notice:", err);
+    }
+  }
+
   static async getCall(id: string): Promise<CallRecord | null> {
     assertProductionStatelessness();
     const supabase = getSupabaseServerClient();
@@ -28,7 +77,7 @@ export class SupabaseRepository {
 
     const { data, error } = await supabase
       .from("calls")
-      .select("*")
+      .select("*, agents(id, name, employee_code), campaigns(id, name), scorecards(id, name)")
       .eq("id", id)
       .maybeSingle();
 
@@ -37,6 +86,10 @@ export class SupabaseRepository {
       throw new Error(`Database error fetching call [${id}]: ${error.message}`);
     }
     if (!data) return null;
+
+    const relAgent = data.agents as { name?: string } | null;
+    const relCampaign = data.campaigns as { name?: string } | null;
+    const relScorecard = data.scorecards as { name?: string } | null;
 
     return {
       id: data.id,
@@ -64,9 +117,9 @@ export class SupabaseRepository {
       uploaded_at: data.uploaded_at,
       created_at: data.created_at,
       updated_at: data.updated_at,
-      agent_name: data.agent_name || INITIAL_AGENT.name,
-      campaign_name: data.campaign_name || INITIAL_CAMPAIGN.name,
-      scorecard_name: data.scorecard_name || INITIAL_SCORECARD.name,
+      agent_name: relAgent?.name || data.agent_name || INITIAL_AGENT.name,
+      campaign_name: relCampaign?.name || data.campaign_name || INITIAL_CAMPAIGN.name,
+      scorecard_name: relScorecard?.name || data.scorecard_name || INITIAL_SCORECARD.name,
     };
   }
 
@@ -109,7 +162,11 @@ export class SupabaseRepository {
     const supabase = getSupabaseServerClient();
     if (!supabase) return [];
 
-    let query = supabase.from("calls").select("*").order("created_at", { ascending: false });
+    let query = supabase
+      .from("calls")
+      .select("*, agents(id, name, employee_code), campaigns(id, name), scorecards(id, name)")
+      .order("created_at", { ascending: false });
+
     if (organizationId) {
       query = query.eq("organization_id", organizationId);
     }
@@ -120,30 +177,35 @@ export class SupabaseRepository {
       throw new Error(`Database error listing calls: ${error.message}`);
     }
 
-    return (data || []).map((row) => ({
-      id: row.id,
-      organization_id: row.organization_id,
-      campaign_id: row.campaign_id,
-      agent_id: row.agent_id,
-      scorecard_id: row.scorecard_id,
-      external_call_id: row.external_call_id,
-      jira_transaction_number: row.jira_transaction_number,
-      customer_phone_masked: row.customer_phone_masked,
-      interaction_date: row.interaction_date,
-      interaction_time: row.interaction_time,
-      issue_type: row.issue_type,
-      query_count: row.query_count || 1,
-      audio_storage_path: row.audio_storage_path,
-      duration_seconds: row.duration_seconds,
-      language: row.language || "en",
-      processing_status: row.processing_status,
-      processing_error: row.processing_error,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      agent_name: INITIAL_AGENT.name,
-      campaign_name: INITIAL_CAMPAIGN.name,
-      scorecard_name: INITIAL_SCORECARD.name,
-    }));
+    return (data || []).map((row) => {
+      const relAgent = row.agents as { name?: string } | null;
+      const relCampaign = row.campaigns as { name?: string } | null;
+      const relScorecard = row.scorecards as { name?: string } | null;
+      return {
+        id: row.id,
+        organization_id: row.organization_id,
+        campaign_id: row.campaign_id,
+        agent_id: row.agent_id,
+        scorecard_id: row.scorecard_id,
+        external_call_id: row.external_call_id,
+        jira_transaction_number: row.jira_transaction_number,
+        customer_phone_masked: row.customer_phone_masked,
+        interaction_date: row.interaction_date,
+        interaction_time: row.interaction_time,
+        issue_type: row.issue_type,
+        query_count: row.query_count || 1,
+        audio_storage_path: row.audio_storage_path,
+        duration_seconds: row.duration_seconds,
+        language: row.language || "en",
+        processing_status: row.processing_status,
+        processing_error: row.processing_error,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        agent_name: relAgent?.name || INITIAL_AGENT.name,
+        campaign_name: relCampaign?.name || INITIAL_CAMPAIGN.name,
+        scorecard_name: relScorecard?.name || INITIAL_SCORECARD.name,
+      };
+    });
   }
 
   // ==========================================

@@ -77,10 +77,17 @@ export class CallService {
     // 3. Create unique Call ID
     const callId = crypto.randomUUID();
 
+    const agentId = input.agentId || INITIAL_AGENT.id;
+    const campaignId = input.campaignId || INITIAL_CAMPAIGN.id;
+    const scorecardId = input.scorecardId || INITIAL_SCORECARD.id;
+    const agentName = input.agentName || INITIAL_AGENT.name;
+    const campaignName = input.campaignName || INITIAL_CAMPAIGN.name;
+    const scorecardName = input.scorecardName || INITIAL_SCORECARD.name;
+
     // 4. Generate Storage Upload Authorization
     const uploadAuth = await StorageService.createCallUploadAuthorization({
       organizationId: userContext.organizationId,
-      campaignId: input.campaignId,
+      campaignId,
       callId,
       fileName: input.fileName,
       contentType: input.mimeType,
@@ -88,12 +95,13 @@ export class CallService {
     });
 
     const now = new Date().toISOString();
+
     const newCall: CallRecord = {
       id: callId,
       organization_id: userContext.organizationId,
-      campaign_id: input.campaignId,
-      agent_id: input.agentId,
-      scorecard_id: input.scorecardId,
+      campaign_id: campaignId,
+      agent_id: agentId,
+      scorecard_id: scorecardId,
       external_call_id: input.externalCallId || null,
       client_request_id: input.clientRequestId,
       jira_transaction_number: input.jiraTransactionNumber || null,
@@ -110,9 +118,9 @@ export class CallService {
       language: "en",
       created_at: now,
       updated_at: now,
-      agent_name: INITIAL_AGENT.name,
-      campaign_name: INITIAL_CAMPAIGN.name,
-      scorecard_name: INITIAL_SCORECARD.name,
+      agent_name: agentName,
+      campaign_name: campaignName,
+      scorecard_name: scorecardName,
     };
 
     stores.calls.set(callId, newCall);
@@ -140,6 +148,20 @@ export class CallService {
     stores.saveState();
 
     if (SupabaseRepository.isEnabled()) {
+      await SupabaseRepository.ensureAgentAndCampaign(
+        {
+          id: agentId,
+          name: agentName,
+          employee_code: input.agentEmployeeCode || null,
+          organization_id: userContext.organizationId,
+          campaign_id: campaignId,
+        },
+        {
+          id: campaignId,
+          name: campaignName,
+          organization_id: userContext.organizationId,
+        }
+      );
       await SupabaseRepository.saveCall(newCall);
       for (const ev of events) {
         await SupabaseRepository.addProcessingEvent(callId, ev);

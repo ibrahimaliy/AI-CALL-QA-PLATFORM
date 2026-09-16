@@ -25,6 +25,71 @@ export const INITIAL_AGENT = {
   active: true,
 };
 
+export const SAMPLE_CAMPAIGNS = [
+  INITIAL_CAMPAIGN,
+  {
+    id: "b0000000-0000-0000-0000-000000000002",
+    organization_id: "a0000000-0000-0000-0000-000000000001",
+    name: "Technical Support & Broadband",
+    description: "4G LTE router troubleshooting, broadband fiber support, and speed diagnostics",
+    active: true,
+  },
+  {
+    id: "b0000000-0000-0000-0000-000000000003",
+    organization_id: "a0000000-0000-0000-0000-000000000001",
+    name: "Billing, Recharge & KYC",
+    description: "Payment disputes, SIM registration compliance, data bundle subscriptions",
+    active: true,
+  },
+  {
+    id: "b0000000-0000-0000-0000-000000000004",
+    organization_id: "a0000000-0000-0000-0000-000000000001",
+    name: "VIP & Enterprise Accounts",
+    description: "Dedicated account management and SLA escalation for corporate clients",
+    active: true,
+  },
+];
+
+export const SAMPLE_AGENTS = [
+  INITIAL_AGENT,
+  {
+    id: "c0000000-0000-0000-0000-000000000002",
+    organization_id: "a0000000-0000-0000-0000-000000000001",
+    campaign_id: "b0000000-0000-0000-0000-000000000001",
+    employee_code: "AGT-1082",
+    name: "Aisha Mohammed",
+    email: "a.mohammed@smiletelecom.com",
+    active: true,
+  },
+  {
+    id: "c0000000-0000-0000-0000-000000000003",
+    organization_id: "a0000000-0000-0000-0000-000000000001",
+    campaign_id: "b0000000-0000-0000-0000-000000000002",
+    employee_code: "AGT-1130",
+    name: "Chinedu Eze",
+    email: "c.eze@smiletelecom.com",
+    active: true,
+  },
+  {
+    id: "c0000000-0000-0000-0000-000000000004",
+    organization_id: "a0000000-0000-0000-0000-000000000001",
+    campaign_id: "b0000000-0000-0000-0000-000000000001",
+    employee_code: "AGT-1194",
+    name: "Fatima Bello",
+    email: "f.bello@smiletelecom.com",
+    active: true,
+  },
+  {
+    id: "c0000000-0000-0000-0000-000000000005",
+    organization_id: "a0000000-0000-0000-0000-000000000001",
+    campaign_id: "b0000000-0000-0000-0000-000000000003",
+    employee_code: "AGT-1215",
+    name: "David Adeleke",
+    email: "d.adeleke@smiletelecom.com",
+    active: true,
+  },
+];
+
 export const INITIAL_SCORECARD: ScorecardWithDetails = {
   id: "d0000000-0000-0000-0000-000000000001",
   organization_id: "a0000000-0000-0000-0000-000000000001",
