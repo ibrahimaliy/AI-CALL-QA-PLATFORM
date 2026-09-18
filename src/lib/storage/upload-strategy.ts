@@ -163,8 +163,15 @@ export class ResumableSupabaseUploadStrategy implements AudioUploadStrategy {
           : null);
 
       if (!endpoint) {
-        // Prevent silent proxying of large files through Vercel Functions which triggers 413
-        if (destination.uploadUrl.startsWith("/api/") && file.size > 4.5 * 1024 * 1024) {
+        const isLocalDev =
+          typeof window !== "undefined" &&
+          (window.location.hostname === "localhost" ||
+            window.location.hostname === "127.0.0.1" ||
+            window.location.hostname.endsWith(".local") ||
+            window.location.hostname.includes("loca.lt"));
+
+        // Prevent silent proxying of large files through Vercel Functions which triggers 413 (production only)
+        if (!isLocalDev && destination.uploadUrl.startsWith("/api/") && file.size > 4.5 * 1024 * 1024) {
           if (onProgress) {
             onProgress({
               percentage: 0,

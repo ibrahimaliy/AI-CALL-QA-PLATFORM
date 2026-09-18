@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useId } from "react";
+import React, { useState, useId, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -13,6 +13,7 @@ import {
   Clock,
   Sparkles,
   Loader2,
+  X,
 } from "lucide-react";
 import {
   INITIAL_AGENT,
@@ -80,35 +81,51 @@ export default function NewCallPage() {
     setExternalCallId(`EXT-${randomDigits}`);
   };
 
-  // File State
+  // File & Drag-and-Drop State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounterRef = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [uploadStep, setUploadStep] = useState<UploadStep>("IDLE");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatusText, setUploadStatusText] = useState<string>("Uploading recording...");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdCallId, setCreatedCallId] = useState<string | null>(null);
 
+  // Prevent browser default behavior of opening and playing media files dropped anywhere in the window
+  useEffect(() => {
+    const preventDefaults = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    window.addEventListener("dragover", preventDefaults);
+    window.addEventListener("drop", preventDefaults);
+
+    return () => {
+      window.removeEventListener("dragover", preventDefaults);
+      window.removeEventListener("drop", preventDefaults);
+    };
+  }, []);
+
   // Client request ID (Idempotency key per form lifecycle)
   const [clientRequestId, setClientRequestId] = useState(() => `req_${crypto.randomUUID()}`);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const validateAndSetFile = useCallback((file: File) => {
     setErrorMessage(null);
-    if (!e.target.files || e.target.files.length === 0) {
-      setSelectedFile(null);
-      return;
-    }
 
-    const file = e.target.files[0];
-
-    // Client validation
+    // Client validation for file size
     if (file.size > STORAGE_CONFIG.MAX_CALL_UPLOAD_BYTES) {
       setErrorMessage(
         `Selected file exceeds the maximum allowed limit of ${STORAGE_CONFIG.MAX_CALL_UPLOAD_MB} MB.`
       );
       setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
+    // Client validation for file extension
     const ext = "." + file.name.split(".").pop()?.toLowerCase();
     if (!STORAGE_CONFIG.ALLOWED_EXTENSIONS.some((e) => e === ext)) {
       setErrorMessage(
@@ -117,10 +134,68 @@ export default function NewCallPage() {
         )}`
       );
       setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
     setSelectedFile(file);
+  }, []);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) {
+      setSelectedFile(null);
+      return;
+    }
+    validateAndSetFile(e.target.files[0]);
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "copy";
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+
+    if (isSubmitting) return;
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      validateAndSetFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleRemoveFile = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
@@ -602,8 +677,21 @@ export default function NewCallPage() {
             </span>
           </div>
 
-          <div className="border-2 border-dashed border-slate-800 hover:border-cyan-500/50 rounded-xl p-6 text-center transition-all bg-slate-950/40">
+          <div
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-200 ${
+              isDragging
+                ? "border-cyan-400 bg-cyan-950/50 ring-4 ring-cyan-500/20 scale-[1.01]"
+                : selectedFile
+                ? "border-cyan-800/80 bg-cyan-950/20 hover:border-cyan-700"
+                : "border-slate-800 hover:border-cyan-500/50 bg-slate-950/40"
+            }`}
+          >
             <input
+              ref={fileInputRef}
               type="file"
               id="audio-upload-input"
               accept=".mp3,.wav,.m4a,.aac,audio/mpeg,audio/wav,audio/mp4,audio/x-m4a"
@@ -611,26 +699,81 @@ export default function NewCallPage() {
               disabled={isSubmitting}
               className="hidden"
             />
-            <label
-              htmlFor="audio-upload-input"
-              className="cursor-pointer flex flex-col items-center space-y-2 select-none"
-            >
-              <div className="w-12 h-12 rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-800/80 flex items-center justify-center">
-                <UploadCloud className="w-6 h-6" />
-              </div>
-              <div className="text-sm font-semibold text-slate-200">
-                {selectedFile ? selectedFile.name : "Click to select or drag audio recording"}
-              </div>
-              <div className="text-xs text-slate-400">
-                Supported formats: MP3, WAV, M4A, AAC
-              </div>
-              {selectedFile && (
-                <div className="mt-2 inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-700/60 text-xs text-cyan-300 font-mono">
-                  <FileAudio className="w-3.5 h-3.5" />
-                  <span>{(selectedFile.size / (1024 * 1024)).toFixed(2)} MB</span>
+
+            {isDragging ? (
+              <div className="flex flex-col items-center space-y-3 pointer-events-none py-2">
+                <div className="w-14 h-14 rounded-2xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 flex items-center justify-center animate-pulse">
+                  <UploadCloud className="w-7 h-7 text-cyan-400" />
                 </div>
-              )}
-            </label>
+                <div className="text-base font-bold text-cyan-300">
+                  Drop audio recording here to upload
+                </div>
+                <div className="text-xs text-cyan-400/80">
+                  Supported formats: MP3, WAV, M4A, AAC
+                </div>
+              </div>
+            ) : selectedFile ? (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-3.5 bg-slate-900/90 rounded-xl border border-slate-800">
+                <div className="flex items-center space-x-3 text-left overflow-hidden w-full">
+                  <div className="w-11 h-11 rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-800/80 flex items-center justify-center shrink-0">
+                    <FileAudio className="w-5 h-5" />
+                  </div>
+                  <div className="truncate min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-slate-200 truncate" title={selectedFile.name}>
+                      {selectedFile.name}
+                    </div>
+                    <div className="flex items-center space-x-2 text-xs text-slate-400 mt-0.5">
+                      <span className="font-mono text-cyan-300">
+                        {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
+                      </span>
+                      <span>•</span>
+                      <span className="uppercase text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                        {selectedFile.name.split(".").pop()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2 shrink-0">
+                  <label
+                    htmlFor="audio-upload-input"
+                    className={`cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors border border-slate-700 ${
+                      isSubmitting ? "pointer-events-none opacity-50" : ""
+                    }`}
+                  >
+                    Change File
+                  </label>
+                  {!isSubmitting && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveFile}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-950/40 transition-colors border border-transparent hover:border-red-900/50"
+                      title="Remove file"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <label
+                htmlFor="audio-upload-input"
+                className="cursor-pointer flex flex-col items-center space-y-2 select-none"
+              >
+                <div className="w-12 h-12 rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-800/80 flex items-center justify-center transition-transform hover:scale-105">
+                  <UploadCloud className="w-6 h-6" />
+                </div>
+                <div className="text-sm font-semibold text-slate-200">
+                  Click to select or drag audio recording
+                </div>
+                <div className="text-xs text-slate-400">
+                  Supported formats: MP3, WAV, M4A, AAC
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Drop audio file directly anywhere in this box
+                </div>
+              </label>
+            )}
           </div>
         </div>
 
